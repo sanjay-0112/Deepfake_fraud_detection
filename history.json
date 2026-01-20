@@ -1,0 +1,30 @@
+[
+  {
+    "user": "sanjay",
+    "filename": "IMG_20251130_101009386.jpg",
+    "prediction": "Real",
+    "confidence": 0.849517285823822,
+    "timestamp": "2026-01-20 00:00:43"
+  },
+  {
+    "user": "sanjay",
+    "filename": "IMG_20251202_104658953.jpg",
+    "prediction": "Fake",
+    "confidence": 0.8469702005386353,
+    "timestamp": "2026-01-20 00:01:29"
+  },
+  {
+    "user": "sanjay",
+    "filename": "fake_0.jpg",
+    "prediction": "Fake",
+    "confidence": 0.9666133522987366,
+    "timestamp": "2026-01-20 00:02:19"
+  },
+  {
+    "user": "sanjay",
+    "filename": "real_10010.jpg",
+    "prediction": "Real",
+    "confidence": 0.7664169073104858,
+    "timestamp": "2026-01-20 00:02:34"
+  }
+]
