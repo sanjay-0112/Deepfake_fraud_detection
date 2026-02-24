@@ -96,6 +96,7 @@ if uploaded_file:
 
         st.success(f"Prediction: {label}")
         st.progress(int(confidence*100))
+        st.caption(f"Confidence: {confidence*100:.2f}%")
 
         # -------- FIXED STORAGE UPLOAD --------
         supabase.storage.from_("images").upload(
@@ -158,3 +159,4 @@ if st.session_state.show_review:
     if st.button("❌ Close Review"):
         st.session_state.show_review = False
         st.rerun()
+
