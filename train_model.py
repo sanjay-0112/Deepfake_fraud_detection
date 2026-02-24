@@ -7,8 +7,8 @@ import os
 
 # ---------------- CONFIG ----------------
 DATA_DIR = "dataset"
-BATCH_SIZE = 16
-EPOCHS = 5          # Start small
+BATCH_SIZE = 32
+EPOCHS = 8
 LEARNING_RATE = 0.0001
 MODEL_PATH = "deepfake_mobilenet.pth"
 
@@ -105,6 +105,7 @@ for epoch in range(EPOCHS):
 # ---------------- SAVE MODEL ----------------
 torch.save(model.state_dict(), MODEL_PATH)
 print("Model saved as", MODEL_PATH)
+
 
 
 
