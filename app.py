@@ -6,6 +6,7 @@ from database import supabase
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Deepfake Detection System", layout="centered")
+
 os.makedirs("uploads", exist_ok=True)
 
 # ---------------- SESSION STATE ----------------
@@ -15,32 +16,25 @@ if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
-if "show_review" not in st.session_state:
-    st.session_state.show_review = False
-if "selected_review" not in st.session_state:
-    st.session_state.selected_review = None
+if "review_image" not in st.session_state:
+    st.session_state.review_image = None
 
-
-# ---------------- AUTH ----------------
+# ---------------- AUTH FUNCTIONS ----------------
 def create_user(username, password):
     return supabase.table("users").insert({
         "username": username,
         "password": password
     }).execute()
 
-
 def login_user(username, password):
-    result = (
-        supabase.table("users")
-        .select("*")
-        .eq("username", username)
-        .eq("password", password)
+    result = supabase.table("users") \
+        .select("*") \
+        .eq("username", username) \
+        .eq("password", password) \
         .execute()
-    )
     return result.data
 
-
-# ---------------- LOGIN PAGE ----------------
+# ---------------- LOGIN / SIGNUP ----------------
 if not st.session_state.logged_in:
 
     st.title("🔐 Cloud Verification Access")
@@ -49,22 +43,31 @@ if not st.session_state.logged_in:
     tab1, tab2 = st.tabs(["📝 Sign Up", "🔑 Login"])
 
     with tab1:
-        u = st.text_input("Create Username")
-        p = st.text_input("Create Password", type="password")
+        new_user = st.text_input("Create Username", key="new_user")
+        new_pass = st.text_input("Create Password", type="password")
+
         if st.button("Create Account"):
-            create_user(u, p)
-            st.success("Account created!")
+            if new_user and new_pass:
+                create_user(new_user, new_pass)
+                st.success("Account created! Please login.")
+            else:
+                st.warning("Enter username & password")
 
     with tab2:
-        u = st.text_input("Username")
-        p = st.text_input("Password", type="password")
+        user = st.text_input("Username")
+        passwd = st.text_input("Password", type="password")
+
         if st.button("Login"):
-            data = login_user(u, p)
+            data = login_user(user, passwd)
+
             if data:
+                st.success("Login successful")
                 st.session_state.logged_in = True
+                st.session_state.current_user = user
                 st.session_state.user_id = data[0]["id"]
-                st.session_state.current_user = u
                 st.rerun()
+            else:
+                st.error("Invalid credentials")
 
     st.stop()
 
@@ -74,45 +77,60 @@ st.caption(f"Logged in as: **{st.session_state.current_user}**")
 
 if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
+    st.session_state.user_id = None
+    st.session_state.current_user = None
     st.rerun()
 
-uploaded_file = st.file_uploader("Upload image", type=["jpg","jpeg","png"])
+# ---------------- UPLOAD ----------------
+uploaded_file = st.file_uploader(
+    "Upload an image to verify",
+    type=["jpg", "jpeg", "png"]
+)
 
 if uploaded_file:
-
-    file_bytes = uploaded_file.getvalue()
-    unique_name = f"{datetime.now().timestamp()}_{uploaded_file.name}"
 
     path = os.path.join("uploads", uploaded_file.name)
 
     with open(path, "wb") as f:
-        f.write(file_bytes)
+        f.write(uploaded_file.getbuffer())
 
-    st.image(path)
+    st.image(path, caption="Uploaded Image", use_container_width=True)
 
-    if st.button("🔍 Verify Media"):
+    if st.button("🔍 Verify Media", use_container_width=True):
 
-        label, confidence = predict_image(path)
+        with st.spinner("Running AI verification..."):
+            label, confidence = predict_image(path)
 
+        # ---------- SHOW RESULT ----------
+        st.subheader("Result")
         st.success(f"Prediction: {label}")
-        st.progress(int(confidence*100))
 
-        # -------- FIXED STORAGE UPLOAD --------
-        supabase.storage.from_("images").upload(
-            unique_name,
-            path,
-            file_options={"upsert": "true"}
-        )
+        percent = confidence * 100
+        st.progress(int(percent))
+        st.caption(f"Confidence: {percent:.2f}%")
 
-        # save DB history
+        # ---------- UPLOAD TO SUPABASE STORAGE ----------
+        unique_name = f"{datetime.now().timestamp()}_{uploaded_file.name}"
+
+        try:
+            supabase.storage.from_("images").upload(
+                unique_name,
+                path
+            )
+        except Exception as e:
+            st.warning("Image upload skipped (storage policy issue).")
+
+        # ---------- SAVE HISTORY ----------
         supabase.table("detection_history").insert({
             "user_id": st.session_state.user_id,
-            "filename": unique_name,
+            "filename": uploaded_file.name,
             "prediction": label,
-            "confidence": confidence
+            "confidence": confidence,
+            "image_path": unique_name,
+            "created_at": str(datetime.now())
         }).execute()
 
-# ---------------- HISTORY ----------------
+# ---------------- SIDEBAR HISTORY ----------------
 st.sidebar.subheader("📜 Detection History")
 
 history = supabase.table("detection_history") \
@@ -123,38 +141,51 @@ history = supabase.table("detection_history") \
 
 if history.data:
 
-    files = [i["filename"] for i in history.data]
-
-    selected = st.sidebar.selectbox("Select image", files)
-
-    if st.sidebar.button("👁️ Review Selected"):
-        st.session_state.show_review = True
-        st.session_state.selected_review = selected
-
-    if st.sidebar.button("🗑️ Clear History"):
+    if st.sidebar.button("🧹 Clear History (DB)"):
         supabase.table("detection_history") \
             .delete() \
             .eq("user_id", st.session_state.user_id) \
             .execute()
         st.rerun()
 
-if st.session_state.show_review:
+    for item in history.data[:10]:
 
-    item = next(
-        i for i in history.data
-        if i["filename"] == st.session_state.selected_review
-    )
+        if st.sidebar.button(
+            f"{item['filename']} ({item['prediction']})",
+            key=item["id"]
+        ):
+            st.session_state.review_image = item
 
-    st.subheader("📂 Detection Review")
+else:
+    st.sidebar.caption("No detections yet")
 
-    url = supabase.storage.from_("images").get_public_url(
-        item["filename"]
-    )
+# ---------------- REVIEW PANEL ----------------
+if st.session_state.review_image:
 
-    st.image(url)
-    st.write(item["prediction"])
-    st.write(item["confidence"])
+    review = st.session_state.review_image
+
+    st.divider()
+    st.subheader("🧾 Review History Item")
+
+    try:
+        image_url = supabase.storage.from_("images").get_public_url(
+            review["image_path"]
+        )
+
+        st.image(image_url, caption=review["filename"], use_container_width=True)
+
+    except:
+        st.warning("Image preview unavailable.")
+
+    st.write(f"**Prediction:** {review['prediction']}")
+    st.write(f"**Confidence:** {review['confidence']*100:.2f}%")
+    st.write(f"**Timestamp:** {review['created_at']}")
 
     if st.button("❌ Close Review"):
-        st.session_state.show_review = False
+        st.session_state.review_image = None
         st.rerun()
+
+# ---------------- WARNING ----------------
+st.warning(
+    "Prediction confidence may vary as this is a prototype deepfake detection system."
+)
