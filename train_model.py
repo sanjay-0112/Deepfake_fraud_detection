@@ -49,7 +49,7 @@ model = models.mobilenet_v2(weights=models.MobileNet_V2_Weights.DEFAULT)
 
 # Freeze base layers
 for param in model.features.parameters():
-    param.requires_grad = True
+    param.requires_grad = False
 
 # Replace classifier
 model.classifier[1] = nn.Linear(model.last_channel, 2)
@@ -105,5 +105,6 @@ for epoch in range(EPOCHS):
 # ---------------- SAVE MODEL ----------------
 torch.save(model.state_dict(), MODEL_PATH)
 print("Model saved as", MODEL_PATH)
+
 
 
