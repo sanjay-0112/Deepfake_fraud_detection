@@ -1,13 +1,11 @@
 import streamlit as st
 import os
-from datetime import datetime
+import uuid
 from ai_inference import predict_image
 from database import supabase
 
 # ---------------- PAGE CONFIG ----------------
 st.set_page_config(page_title="Deepfake Detection System", layout="centered")
-
-os.makedirs("uploads", exist_ok=True)
 
 # ---------------- SESSION STATE ----------------
 if "logged_in" not in st.session_state:
@@ -36,7 +34,7 @@ def login_user(username, password):
     return result.data
 
 
-# ---------------- LOGIN / SIGNUP PAGE ----------------
+# ---------------- LOGIN / SIGNUP ----------------
 if not st.session_state.logged_in:
 
     st.title("🔐 Cloud Verification Access")
@@ -92,27 +90,36 @@ uploaded_file = st.file_uploader(
 )
 
 if uploaded_file:
-    path = os.path.join("uploads", uploaded_file.name)
 
-    with open(path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
+    # Unique cloud filename
+    file_ext = uploaded_file.name.split(".")[-1]
+    unique_name = f"{uuid.uuid4()}.{file_ext}"
 
-    st.image(path, caption="Uploaded Image", width="stretch")
+    file_bytes = uploaded_file.getvalue()
+
+    # Upload image to Supabase Storage
+    supabase.storage.from_("images").upload(
+        unique_name,
+        file_bytes
+    )
+
+    # Show uploaded image instantly
+    st.image(file_bytes, caption="Uploaded Image", width="stretch")
 
     if st.button("🔍 Verify Media", use_container_width=True):
 
         with st.spinner("Running AI verification..."):
-            label, confidence = predict_image(path)
+            label, confidence = predict_image(uploaded_file)
 
         st.subheader("Result")
         st.success(f"Prediction: {label}")
         st.progress(int(confidence * 100))
         st.caption(f"Confidence: {confidence*100:.2f}%")
 
-        # SAVE TO SUPABASE
+        # Save history in database
         supabase.table("detection_history").insert({
             "user_id": st.session_state.user_id,
-            "filename": uploaded_file.name,
+            "filename": unique_name,
             "prediction": label,
             "confidence": confidence
         }).execute()
@@ -132,13 +139,13 @@ if history.data:
     for item in history.data[:5]:
         st.sidebar.write(
             f"{item['created_at']} | "
-            f"{item['filename']} → {item['prediction']} "
+            f"{item['prediction']} "
             f"({item['confidence']*100:.1f}%)"
         )
 else:
     st.sidebar.caption("No detections yet")
 
-# ---------------- HISTORY REVIEW FEATURE ----------------
+# ---------------- HISTORY REVIEW ----------------
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔎 Review Detection")
 
@@ -157,15 +164,15 @@ if history.data:
         if item["filename"] == selected_file
     )
 
-# ---------------- SHOW REVIEW ----------------
+# ---------------- SHOW REVIEW IMAGE ----------------
 if selected_item:
     st.subheader("📂 Detection Review")
 
-    image_path = os.path.join("uploads", selected_item["filename"])
+    image_url = supabase.storage.from_("images").get_public_url(
+        selected_item["filename"]
+    )
 
-    if os.path.exists(image_path):
-        st.image(image_path, caption=selected_item["filename"], width="stretch")
-
+    st.image(image_url, caption=selected_item["filename"], width="stretch")
     st.write(f"Prediction: **{selected_item['prediction']}**")
     st.write(f"Confidence: **{selected_item['confidence']*100:.2f}%**")
     st.write(f"Time: {selected_item['created_at']}")
