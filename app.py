@@ -5,7 +5,35 @@ from ai_inference import predict_image
 from database import supabase
 
 # ---------------- PAGE CONFIG ----------------
-st.set_page_config(page_title="Deepfake Detection System", layout="centered")
+st.set_page_config(
+    page_title="Deepfake Fraud Detection",
+    layout="wide",
+    page_icon="🕵️"
+)
+
+# ---------------- CUSTOM UI STYLE ----------------
+st.markdown("""
+<style>
+.main {
+    background-color: #050914;
+}
+.block-container {
+    padding-top: 2rem;
+}
+
+h1 {
+    text-align: center;
+    font-weight: 700;
+}
+
+.upload-box {
+    background: #0f172a;
+    padding: 25px;
+    border-radius: 15px;
+    box-shadow: 0 0 20px rgba(0,0,0,0.4);
+}
+</style>
+""", unsafe_allow_html=True)
 
 os.makedirs("uploads", exist_ok=True)
 
@@ -32,7 +60,7 @@ def login_user(username, password):
         .execute()
     return result.data
 
-# ---------------- LOGIN / SIGNUP PAGE ----------------
+# ---------------- LOGIN / SIGNUP ----------------
 if not st.session_state.logged_in:
 
     st.title("🔐 Cloud Verification Access")
@@ -70,14 +98,21 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ---------------- MAIN APP ----------------
-st.title("🕵️ Deepfake Fraud Detection System")
-st.caption(f"Logged in as: **{st.session_state.current_user}**")
+st.markdown("<h1>🕵️ Deepfake Fraud Detection System</h1>",
+            unsafe_allow_html=True)
 
+st.caption(f"Logged in as: **{st.session_state.current_user}**")
+st.markdown("---")
+
+# Logout
 if st.sidebar.button("Logout"):
     st.session_state.logged_in = False
     st.session_state.user_id = None
     st.session_state.current_user = None
     st.rerun()
+
+# ---------------- UPLOAD SECTION ----------------
+st.markdown('<div class="upload-box">', unsafe_allow_html=True)
 
 uploaded_file = st.file_uploader(
     "Upload an image to verify",
@@ -97,8 +132,13 @@ if uploaded_file:
         with st.spinner("Running AI verification..."):
             label, confidence = predict_image(path)
 
-        st.subheader("Result")
-        st.success(f"Prediction: {label}")
+        st.markdown("### 🔎 Result")
+
+        if label.lower() == "real":
+            st.success(f"✅ Prediction: {label}")
+        else:
+            st.error(f"⚠️ Prediction: {label}")
+
         st.progress(int(confidence * 100))
         st.caption(f"Confidence: {confidence*100:.2f}%")
 
@@ -109,6 +149,8 @@ if uploaded_file:
             "prediction": label,
             "confidence": confidence
         }).execute()
+
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ---------------- SIDEBAR HISTORY ----------------
 st.sidebar.subheader("📜 Detection History")
