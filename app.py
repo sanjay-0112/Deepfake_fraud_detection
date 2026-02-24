@@ -1,6 +1,7 @@
 import streamlit as st
 import os
 from datetime import datetime
+from io import BytesIO
 from ai_inference import predict_image
 from database import supabase
 
@@ -32,14 +33,16 @@ def create_user(username, password):
     }).execute()
 
 def login_user(username, password):
-    result = supabase.table("users") \
-        .select("*") \
-        .eq("username", username) \
-        .eq("password", password) \
+    result = (
+        supabase.table("users")
+        .select("*")
+        .eq("username", username)
+        .eq("password", password)
         .execute()
+    )
     return result.data
 
-# ---------------- LOGIN / SIGNUP ----------------
+# ---------------- LOGIN / SIGNUP PAGE ----------------
 if not st.session_state.logged_in:
 
     st.title("🔐 Cloud Verification Access")
@@ -86,19 +89,19 @@ if st.sidebar.button("Logout"):
     st.session_state.current_user = None
     st.rerun()
 
+# ---------------- IMAGE UPLOAD ----------------
 uploaded_file = st.file_uploader(
     "Upload an image to verify",
     type=["jpg", "jpeg", "png"]
 )
 
-# ---------------- IMAGE UPLOAD ----------------
 if uploaded_file:
 
     file_bytes = uploaded_file.getvalue()
     unique_name = f"{datetime.now().timestamp()}_{uploaded_file.name}"
 
+    # save local copy (for model inference)
     path = os.path.join("uploads", uploaded_file.name)
-
     with open(path, "wb") as f:
         f.write(file_bytes)
 
@@ -114,10 +117,12 @@ if uploaded_file:
         st.progress(int(confidence * 100))
         st.caption(f"Confidence: {confidence*100:.2f}%")
 
-        # -------- STORAGE UPLOAD (FIXED) --------
+        # -------- SUPABASE STORAGE UPLOAD (FIXED) --------
+        file_stream = BytesIO(file_bytes)
+
         supabase.storage.from_("images").upload(
-            unique_name,
-            file_bytes,
+            path=unique_name,
+            file=file_stream,
             file_options={"upsert": "true"}
         )
 
@@ -132,11 +137,13 @@ if uploaded_file:
 # ---------------- SIDEBAR HISTORY ----------------
 st.sidebar.subheader("📜 Detection History")
 
-history = supabase.table("detection_history") \
-    .select("*") \
-    .eq("user_id", st.session_state.user_id) \
-    .order("created_at", desc=True) \
+history = (
+    supabase.table("detection_history")
+    .select("*")
+    .eq("user_id", st.session_state.user_id)
+    .order("created_at", desc=True)
     .execute()
+)
 
 if history.data:
 
@@ -153,6 +160,8 @@ if history.data:
             .delete() \
             .eq("user_id", st.session_state.user_id) \
             .execute()
+        st.session_state.show_review = False
+        st.session_state.selected_review = None
         st.rerun()
 
 else:
