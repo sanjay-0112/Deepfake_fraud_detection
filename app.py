@@ -1,5 +1,4 @@
 import streamlit as st
-import os
 import uuid
 from ai_inference import predict_image
 from database import supabase
@@ -14,6 +13,12 @@ if "user_id" not in st.session_state:
     st.session_state.user_id = None
 if "current_user" not in st.session_state:
     st.session_state.current_user = None
+
+# REVIEW STATE
+if "show_review" not in st.session_state:
+    st.session_state.show_review = False
+if "selected_review" not in st.session_state:
+    st.session_state.selected_review = None
 
 # ---------------- AUTH FUNCTIONS ----------------
 def create_user(username, password):
@@ -91,19 +96,17 @@ uploaded_file = st.file_uploader(
 
 if uploaded_file:
 
-    # Unique cloud filename
     file_ext = uploaded_file.name.split(".")[-1]
     unique_name = f"{uuid.uuid4()}.{file_ext}"
 
     file_bytes = uploaded_file.getvalue()
 
-    # Upload image to Supabase Storage
+    # Upload to Supabase Storage
     supabase.storage.from_("images").upload(
         unique_name,
         file_bytes
     )
 
-    # Show uploaded image instantly
     st.image(file_bytes, caption="Uploaded Image", width="stretch")
 
     if st.button("🔍 Verify Media", use_container_width=True):
@@ -116,7 +119,7 @@ if uploaded_file:
         st.progress(int(confidence * 100))
         st.caption(f"Confidence: {confidence*100:.2f}%")
 
-        # Save history in database
+        # Save to DB
         supabase.table("detection_history").insert({
             "user_id": st.session_state.user_id,
             "filename": unique_name,
@@ -124,8 +127,20 @@ if uploaded_file:
             "confidence": confidence
         }).execute()
 
+
 # ---------------- SIDEBAR HISTORY ----------------
 st.sidebar.subheader("📜 Detection History")
+
+# CLEAR HISTORY BUTTON
+if st.sidebar.button("🗑️ Clear History"):
+    supabase.table("detection_history") \
+        .delete() \
+        .eq("user_id", st.session_state.user_id) \
+        .execute()
+
+    st.session_state.show_review = False
+    st.session_state.selected_review = None
+    st.rerun()
 
 history = (
     supabase.table("detection_history")
@@ -145,11 +160,10 @@ if history.data:
 else:
     st.sidebar.caption("No detections yet")
 
-# ---------------- HISTORY REVIEW ----------------
+
+# ---------------- REVIEW SELECTION ----------------
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔎 Review Detection")
-
-selected_item = None
 
 if history.data:
     file_options = [item["filename"] for item in history.data]
@@ -159,13 +173,19 @@ if history.data:
         file_options
     )
 
+    if st.sidebar.button("👁️ Review Selected"):
+        st.session_state.show_review = True
+        st.session_state.selected_review = selected_file
+
+
+# ---------------- SHOW REVIEW ONLY WHEN REQUESTED ----------------
+if st.session_state.show_review and st.session_state.selected_review:
+
     selected_item = next(
         item for item in history.data
-        if item["filename"] == selected_file
+        if item["filename"] == st.session_state.selected_review
     )
 
-# ---------------- SHOW REVIEW IMAGE ----------------
-if selected_item:
     st.subheader("📂 Detection Review")
 
     image_url = supabase.storage.from_("images").get_public_url(
@@ -176,6 +196,12 @@ if selected_item:
     st.write(f"Prediction: **{selected_item['prediction']}**")
     st.write(f"Confidence: **{selected_item['confidence']*100:.2f}%**")
     st.write(f"Time: {selected_item['created_at']}")
+
+    if st.button("❌ Close Review"):
+        st.session_state.show_review = False
+        st.session_state.selected_review = None
+        st.rerun()
+
 
 # ---------------- WARNING ----------------
 st.warning(
