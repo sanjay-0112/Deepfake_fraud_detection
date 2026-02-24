@@ -103,9 +103,10 @@ if uploaded_file:
 
     # Upload to Supabase Storage
     supabase.storage.from_("images").upload(
-        unique_name,
-        file_bytes
-    )
+    unique_name,
+    file_bytes,
+    {"upsert": True}
+)
 
     st.image(file_bytes, caption="Uploaded Image", width="stretch")
 
@@ -207,3 +208,4 @@ if st.session_state.show_review and st.session_state.selected_review:
 st.warning(
     "Prediction confidence may vary as this is a prototype deepfake detection system."
 )
+
